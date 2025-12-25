@@ -84,26 +84,27 @@
   <video id="video" playsinline muted></video>
   <div id="cursorDot"></div>
 
-  <!-- Three.js -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-
-  <!-- MediaPipe Hands (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <script>
-    // ========= 参数（iPhone 推荐） =========
     const PARAM = {
       cursorSmooth: 0.20,
-      pinchThresh: 0.070,       // 拇指尖-食指尖距离阈值（越小越难触发）
-      openPalmThresh: 0.70,     // 张开判据
-      fistThresh: 0.42,         // 握拳判据
+      pinchThresh: 0.070,
+      openPalmThresh: 0.70,
+      fistThresh: 0.42,
       focusScale: 2.15,
       focusSmooth: 0.18,
       idleRotate: 0.0008,
+      // 粒子
+      snowCount: 1400,
+      snowArea: { x: 10, y: 12, z: 10 },
+      snowSpeed: 0.9,
+      // 灯光闪烁
+      twinkleSpeed: 1.6
     };
 
-    // ========= DOM =========
     const badgeEl = document.getElementById('badge');
     const statusEl = document.getElementById('status');
     const panelEl  = document.getElementById('panel');
@@ -113,7 +114,7 @@
     const btnStart = document.getElementById('btnStart');
     const btnStartFront = document.getElementById('btnStartFront');
 
-    // ========= Three.js 场景 =========
+    // Three.js
     const app = document.getElementById('app');
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
@@ -121,7 +122,7 @@
     app.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+    const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 300);
     camera.position.set(0, 0, 10);
 
     const ambient = new THREE.AmbientLight(0xffffff, 1.0);
@@ -131,10 +132,13 @@
     dir.position.set(4, 8, 6);
     scene.add(dir);
 
+    // 轻雾化，让粒子更有层次
+    scene.fog = new THREE.Fog(0x06060a, 10, 28);
+
     const raycaster = new THREE.Raycaster();
     const pointerNDC = new THREE.Vector2(0, 0);
 
-    // ========= 照片墙 =========
+    // 照片墙
     const photoGroup = new THREE.Group();
     scene.add(photoGroup);
 
@@ -145,16 +149,9 @@
 
     function makeCard(tex) {
       const geo = new THREE.PlaneGeometry(1.6, 1.1, 1, 1);
-      const mat = new THREE.MeshStandardMaterial({
-        map: tex,
-        roughness: 0.65,
-        metalness: 0.05
-      });
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.65, metalness: 0.05 });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
 
-      // 细边框（用第二层平面）
       const frameGeo = new THREE.PlaneGeometry(1.66, 1.16);
       const frameMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.12 });
       const frame = new THREE.Mesh(frameGeo, frameMat);
@@ -166,7 +163,6 @@
         targetPos: new THREE.Vector3(),
         baseQuat: new THREE.Quaternion(),
         targetQuat: new THREE.Quaternion(),
-        baseScale: 1,
         targetScale: 1,
       };
       return mesh;
@@ -183,7 +179,6 @@
         m.userData.basePos.set(x, y, z);
         m.userData.targetPos.copy(m.userData.basePos);
 
-        // 朝向中心
         const look = new THREE.Matrix4().lookAt(
           m.userData.basePos,
           new THREE.Vector3(0, y*0.15, 0),
@@ -197,10 +192,9 @@
       }
     }
 
-    // 使用 picsum 占位图（你可换成自己的图片 URL）
     const seeds = Array.from({length: cardCount}, (_,i)=>`xmas_${i+1}`);
     let loaded = 0;
-    seeds.forEach((s, i) => {
+    seeds.forEach((s) => {
       const url = `https://picsum.photos/seed/${encodeURIComponent(s)}/800/560`;
       loader.load(url, (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
@@ -209,75 +203,146 @@
         cards.push(card);
         photoGroup.add(card);
         loaded++;
-        if (loaded === cardCount) {
-          layoutWall();
-        }
+        if (loaded === cardCount) layoutWall();
       });
     });
 
-    // ========= 圣诞树（简化版） =========
+    // ========= 圣诞树（升级版：星光 + 灯光呼吸 + 摇摆） =========
     const treeGroup = new THREE.Group();
     treeGroup.visible = false;
     scene.add(treeGroup);
 
-    function buildTree() {
-      // 树身
+    let bulbs = [];
+    let starMat = null;
+    let starGlow = null;
+
+    function buildTreeFancy() {
       const cone1 = new THREE.Mesh(
-        new THREE.ConeGeometry(1.8, 2.6, 24),
-        new THREE.MeshStandardMaterial({ color: 0x1f7a3a, roughness: 0.8, metalness: 0.0 })
+        new THREE.ConeGeometry(1.9, 2.7, 40, 1),
+        new THREE.MeshStandardMaterial({ color: 0x1f7a3a, roughness: 0.78, metalness: 0.02 })
       );
-      cone1.position.y = 0.3;
+      cone1.position.y = 0.25;
 
       const cone2 = new THREE.Mesh(
-        new THREE.ConeGeometry(1.3, 2.1, 24),
-        new THREE.MeshStandardMaterial({ color: 0x1c6d33, roughness: 0.8, metalness: 0.0 })
+        new THREE.ConeGeometry(1.35, 2.2, 40, 1),
+        new THREE.MeshStandardMaterial({ color: 0x1c6d33, roughness: 0.78, metalness: 0.02 })
       );
       cone2.position.y = 1.55;
 
       const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.28, 0.32, 1.0, 20),
-        new THREE.MeshStandardMaterial({ color: 0x6b3f1f, roughness: 0.9, metalness: 0.0 })
+        new THREE.CylinderGeometry(0.30, 0.34, 1.05, 24),
+        new THREE.MeshStandardMaterial({ color: 0x6b3f1f, roughness: 0.92, metalness: 0.0 })
       );
-      trunk.position.y = -1.15;
+      trunk.position.y = -1.18;
 
       treeGroup.add(cone1, cone2, trunk);
 
-      // 彩灯
-      const bulbGeo = new THREE.SphereGeometry(0.10, 14, 14);
-      for (let i=0;i<20;i++){
-        const m = new THREE.Mesh(
-          bulbGeo,
-          new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(i/20, 0.9, 0.6), roughness: 0.3, metalness: 0.1, emissive: new THREE.Color().setHSL(i/20, 0.9, 0.3), emissiveIntensity: 0.8 })
-        );
-        const a = i/20 * Math.PI*2;
-        const r = 1.2 - (i%5)*0.15;
-        m.position.set(Math.cos(a)*r, (i%10)*0.22 - 0.2, Math.sin(a)*r);
-        treeGroup.add(m);
+      // 灯串（做成一圈一圈绕树）
+      bulbs = [];
+      const bulbGeo = new THREE.SphereGeometry(0.11, 18, 18);
+
+      const rings = [
+        { y: 0.95, r: 1.05, n: 14 },
+        { y: 0.25, r: 1.35, n: 16 },
+        { y: -0.45, r: 1.55, n: 18 },
+      ];
+
+      let idx = 0;
+      for (const ring of rings) {
+        for (let i=0;i<ring.n;i++) {
+          const t = i / ring.n * Math.PI * 2;
+          const hue = (idx % 20) / 20;
+          const base = new THREE.Color().setHSL(hue, 0.9, 0.60);
+          const emiss = new THREE.Color().setHSL(hue, 0.9, 0.35);
+
+          const mat = new THREE.MeshStandardMaterial({
+            color: base,
+            roughness: 0.22,
+            metalness: 0.12,
+            emissive: emiss,
+            emissiveIntensity: 0.6
+          });
+
+          const b = new THREE.Mesh(bulbGeo, mat);
+          // 绕树一圈，同时轻微上下起伏
+          b.position.set(Math.cos(t)*ring.r, ring.y + Math.sin(t*2)*0.06, Math.sin(t)*ring.r);
+          b.userData.tw = Math.random() * Math.PI * 2;
+          bulbs.push(b);
+          treeGroup.add(b);
+          idx++;
+        }
       }
 
-      // 星星
+      // 星星：主体 + 光晕（一个半透明球）
       const star = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.22, 0),
-        new THREE.MeshStandardMaterial({ color: 0xffdd66, emissive: 0xffcc33, emissiveIntensity: 1.0, roughness: 0.25 })
+        new THREE.IcosahedronGeometry(0.25, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0xffdd66,
+          emissive: 0xffcc33,
+          emissiveIntensity: 1.2,
+          roughness: 0.25,
+          metalness: 0.15
+        })
       );
-      star.position.set(0, 2.55, 0);
+      star.position.set(0, 2.58, 0);
+      starMat = star.material;
       treeGroup.add(star);
+
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.55, 20, 20),
+        new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0.12 })
+      );
+      glow.position.copy(star.position);
+      starGlow = glow.material;
+      treeGroup.add(glow);
     }
-    buildTree();
+    buildTreeFancy();
+
+    // ========= 粒子：飘雪（Points） =========
+    const snowGroup = new THREE.Group();
+    snowGroup.visible = true;
+    scene.add(snowGroup);
+
+    const snowGeom = new THREE.BufferGeometry();
+    const snowPos = new Float32Array(PARAM.snowCount * 3);
+    const snowVel = new Float32Array(PARAM.snowCount);
+
+    function rand(min, max){ return min + Math.random()*(max-min); }
+
+    for (let i=0;i<PARAM.snowCount;i++){
+      const ix = i*3;
+      snowPos[ix+0] = rand(-PARAM.snowArea.x, PARAM.snowArea.x);
+      snowPos[ix+1] = rand(-PARAM.snowArea.y, PARAM.snowArea.y);
+      snowPos[ix+2] = rand(-PARAM.snowArea.z, PARAM.snowArea.z);
+      snowVel[i] = rand(0.35, 1.0);
+    }
+    snowGeom.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+
+    // 圆点精灵
+    const snowMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.06,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false
+    });
+
+    const snow = new THREE.Points(snowGeom, snowMat);
+    snowGroup.add(snow);
 
     // ========= 手势状态 =========
     let mode = "INIT"; // INIT | WALL | TREE | FOCUS
     let focused = null;
 
-    // cursor（屏幕坐标）
     let cursorX = innerWidth * 0.5;
     let cursorY = innerHeight * 0.5;
-    let cursorVis = false;
 
     function setMode(m) {
       if (mode === m) return;
       mode = m;
       badgeEl.textContent = m;
+
       if (m === "WALL") {
         photoGroup.visible = true;
         treeGroup.visible = false;
@@ -300,18 +365,15 @@
     function smoothTo(a, b, t){ return a + (b-a)*t; }
 
     function setCursor(nx, ny) {
-      // nx, ny: 0..1
       const x = nx * innerWidth;
       const y = ny * innerHeight;
       cursorX = smoothTo(cursorX, x, PARAM.cursorSmooth);
       cursorY = smoothTo(cursorY, y, PARAM.cursorSmooth);
       dotEl.style.left = cursorX + "px";
       dotEl.style.top  = cursorY + "px";
-      cursorVis = true;
     }
 
     function hideCursor() {
-      cursorVis = false;
       dotEl.style.left = "-100px";
       dotEl.style.top  = "-100px";
     }
@@ -323,31 +385,24 @@
       return Math.sqrt(dx*dx + dy*dy + dz*dz);
     }
 
-    // 张开/握拳粗判（用指尖到掌心的距离）
     function openness(lm) {
-      const palm = lm[0]; // wrist
+      const palm = lm[0];
       const tips = [4,8,12,16,20].map(i=>lm[i]);
       const ds = tips.map(t=>landmarkDist(palm, t));
-      // 经验：越大越张开
-      const avg = ds.reduce((s,v)=>s+v,0)/ds.length;
-      return avg; // ~0.35..0.9
+      return ds.reduce((s,v)=>s+v,0)/ds.length;
     }
 
     function getPinch(lm){
-      const thumb = lm[4];
-      const index = lm[8];
-      return landmarkDist(thumb, index);
+      return landmarkDist(lm[4], lm[8]);
     }
 
     function focusCardByCursor() {
-      // cursor -> NDC
       pointerNDC.x = (cursorX / innerWidth) * 2 - 1;
       pointerNDC.y = -(cursorY / innerHeight) * 2 + 1;
       raycaster.setFromCamera(pointerNDC, camera);
       const hits = raycaster.intersectObjects(cards, true);
       if (hits && hits.length) {
         let obj = hits[0].object;
-        // 如果点到 frame 子物体，向上找到 card
         while (obj && !cards.includes(obj) && obj.parent) obj = obj.parent;
         if (obj && cards.includes(obj)) return obj;
       }
@@ -357,19 +412,17 @@
     function enterFocus(card) {
       focused = card;
       setMode("FOCUS");
-      // 让这个卡片移动到镜头前
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const target = new THREE.Vector3().copy(camera.position).add(forward.multiplyScalar(3.2));
       card.userData.targetPos.copy(target);
-      // 朝向镜头
+
       const look = new THREE.Matrix4().lookAt(target, camera.position, new THREE.Vector3(0,1,0));
       card.userData.targetQuat.setFromRotationMatrix(look);
-      card.userData.targetScale = PARAM.focusScale;
+      card.userData.targetScale = 2.15;
     }
 
     function exitFocus() {
       if (!focused) return;
-      // 恢复布局
       focused.userData.targetPos.copy(focused.userData.basePos);
       focused.userData.targetQuat.copy(focused.userData.baseQuat);
       focused.userData.targetScale = 1;
@@ -383,9 +436,7 @@
     let lastHandSeen = 0;
 
     function initHands() {
-      hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-      });
+      hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
       hands.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
@@ -398,28 +449,21 @@
     function onResults(results) {
       const now = performance.now();
       const lm = results.multiHandLandmarks && results.multiHandLandmarks[0];
-      if (!lm) {
-        if (now - lastHandSeen > 600) hideCursor();
-        return;
-      }
+      if (!lm) { if (now - lastHandSeen > 600) hideCursor(); return; }
       lastHandSeen = now;
 
-      // 以食指指尖做光标
       const idxTip = lm[8];
       setCursor(idxTip.x, idxTip.y);
 
-      // 手势判定
       const open = openness(lm);
       const pinch = getPinch(lm);
 
-      // 模式切换：张开->照片墙 / 握拳->树
       if (open > PARAM.openPalmThresh) {
         if (mode !== "FOCUS") setMode("WALL");
       } else if (open < PARAM.fistThresh) {
         if (mode !== "FOCUS") setMode("TREE");
       }
 
-      // 捏合选中：仅在 WALL/FOCUS 生效
       if (mode === "WALL" || mode === "FOCUS") {
         if (pinch < PARAM.pinchThresh) {
           if (mode !== "FOCUS") {
@@ -427,24 +471,15 @@
             if (c) enterFocus(c);
           }
         } else {
-          if (mode === "FOCUS") {
-            exitFocus();
-          }
+          if (mode === "FOCUS") exitFocus();
         }
       }
     }
 
-    // ========= 摄像头：iOS/Safari 必须“同步 onclick 第一层触发” =========
+    // ========= 摄像头（iOS 关键：同步 onclick 第一层触发） =========
     let stream = null;
 
-    function stopStream() {
-      if (!stream) return;
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-
     function requestCamera(facingMode) {
-      // 关键：不要 async/await，不要包太深层
       navigator.mediaDevices.getUserMedia({
         video: { facingMode: facingMode },
         audio: false
@@ -452,23 +487,15 @@
         stream = s;
         videoEl.srcObject = stream;
 
-        // iOS 需要 playsinline + 用户手势后 play
         videoEl.play().then(() => {
           panelEl.style.display = "none";
           setMode("WALL");
 
           if (!hands) initHands();
 
-          // 用 camera_utils 驱动 mediapipe
-          if (mpCamera) {
-            mpCamera.stop();
-            mpCamera = null;
-          }
+          if (mpCamera) { mpCamera.stop(); mpCamera = null; }
           mpCamera = new Camera(videoEl, {
-            onFrame: async () => {
-              if (!hands) return;
-              await hands.send({ image: videoEl });
-            },
+            onFrame: async () => { await hands.send({ image: videoEl }); },
             width: 640,
             height: 480
           });
@@ -485,28 +512,64 @@
       });
     }
 
-    // ✅ iOS 关键：onclick 必须同步触发 requestCamera
     btnStart.onclick = () => requestCamera({ ideal: "environment" });
     btnStartFront.onclick = () => requestCamera("user");
 
-    // 视频预览开关
     toggleVideoEl.onclick = () => {
       videoEl.style.display = (videoEl.style.display === "none" ? "block" : "none");
     };
 
-    // ========= 动画与插值 =========
-    function lerpScene() {
-      // 照片墙缓慢旋转
-      if (mode === "WALL") {
-        scene.rotation.y += PARAM.idleRotate;
-      } else if (mode === "TREE") {
-        treeGroup.rotation.y += 0.012;
+    // ========= 动画 =========
+    function updateSnow(dt) {
+      const p = snowGeom.attributes.position.array;
+      for (let i=0;i<PARAM.snowCount;i++){
+        const ix = i*3;
+        // 下落 + 横向漂移
+        p[ix+1] -= dt * PARAM.snowSpeed * snowVel[i];
+        p[ix+0] += dt * 0.18 * Math.sin((performance.now()*0.001) + i);
+        p[ix+2] += dt * 0.10 * Math.cos((performance.now()*0.0012) + i*0.7);
+
+        if (p[ix+1] < -PARAM.snowArea.y) {
+          p[ix+1] = PARAM.snowArea.y;
+          p[ix+0] = rand(-PARAM.snowArea.x, PARAM.snowArea.x);
+          p[ix+2] = rand(-PARAM.snowArea.z, PARAM.snowArea.z);
+        }
+      }
+      snowGeom.attributes.position.needsUpdate = true;
+      snow.rotation.y += dt * 0.05;
+    }
+
+    function updateTreeFX(t) {
+      if (!treeGroup.visible) return;
+
+      // 轻微摇摆
+      treeGroup.rotation.y += 0.012;
+      treeGroup.rotation.z = Math.sin(t*0.7) * 0.03;
+      treeGroup.position.y = Math.sin(t*0.9) * 0.06;
+
+      // 彩灯呼吸闪烁（emissiveIntensity）
+      for (let i=0;i<bulbs.length;i++){
+        const b = bulbs[i];
+        const k = 0.45 + 0.55 * (0.5 + 0.5*Math.sin(t*PARAM.twinkleSpeed + b.userData.tw));
+        b.material.emissiveIntensity = 0.35 + 0.95*k;
+        // 轻微大小呼吸
+        const s = 1.0 + 0.10 * Math.sin(t*1.3 + b.userData.tw);
+        b.scale.setScalar(s);
       }
 
-      // 卡片插值
+      // 星星更亮一点 + 光晕呼吸
+      if (starMat) {
+        starMat.emissiveIntensity = 1.0 + 0.9*(0.5 + 0.5*Math.sin(t*2.1));
+      }
+      if (starGlow) {
+        starGlow.opacity = 0.08 + 0.12*(0.5 + 0.5*Math.sin(t*2.1));
+      }
+    }
+
+    function lerpCards() {
       for (const card of cards) {
         const isFocus = (card === focused);
-        const smooth = isFocus ? PARAM.focusSmooth : 0.10;
+        const smooth = isFocus ? 0.18 : 0.10;
         card.position.lerp(card.userData.targetPos, smooth);
         card.quaternion.slerp(card.userData.targetQuat, smooth);
         const tScale = isFocus ? card.userData.targetScale : 1;
@@ -515,9 +578,20 @@
       }
     }
 
+    let lastT = performance.now();
     function tick() {
       requestAnimationFrame(tick);
-      lerpScene();
+      const now = performance.now();
+      const dt = Math.min(0.033, (now - lastT) / 1000);
+      lastT = now;
+      const t = now * 0.001;
+
+      if (mode === "WALL") scene.rotation.y += PARAM.idleRotate;
+
+      updateSnow(dt);
+      updateTreeFX(t);
+      lerpCards();
+
       renderer.render(scene, camera);
     }
     tick();
@@ -529,7 +603,6 @@
       renderer.setSize(innerWidth, innerHeight);
     });
 
-    // 初始状态
     setMode("INIT");
   </script>
 </body>
