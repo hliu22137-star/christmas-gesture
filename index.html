@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>手机专用：照片墙 + 捏合选中放大</title>
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; background:#05060a; font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", sans-serif; touch-action:none; }
+    #app { position:fixed; inset:0; }
+
+    #hud{
+      position:fixed; left:12px; top:10px; z-index:10;
+      color:rgba(255,255,255,.92); font-size:13px; line-height:1.4;
+      padding:10px 12px; border-radius:12px;
+      background:rgba(0,0,0,.38); backdrop-filter: blur(10px);
+      border:1px solid rgba(255,255,255,.12);
+      max-width:min(92vw, 560px);
+    }
+    #badge{ display:inline-block; padding:2px 8px; border-radius:999px; margin-right:8px; font-weight:650;
+      background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.14);
+    }
+    #status { margin-top:6px; opacity:.95; }
+    #tips { margin-top:8px; opacity:.85; }
+
+    #video {
+      position:fixed; right:10px; bottom:10px; width:190px; aspect-ratio: 4/3;
+      border-radius:14px; z-index:10; display:none;
+      border:1px solid rgba(255,255,255,.16);
+      box-shadow: 0 16px 40px rgba(0,0,0,.45);
+      background:#000;
+    }
+    #toggleVideo{
+      cursor:pointer; user-select:none; display:inline-block; margin-left:8px;
+      padding:2px 8px; border-radius:999px;
+      background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.14);
+    }
+
+    #cursorDot{
+      position:fixed; width:12px; height:12px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.90);
+      box-shadow:0 0 18px rgba(255,255,255,.35);
+      pointer-events:none; z-index:20;
+      transform:translate(-50%,-50%);
+      display:none;
+    }
+
+    /* iOS/手机：启动遮罩（用户点击触发 getUserMedia） */
+    #startOverlay{
+      position:fixed; inset:0; z-index:50;
+      display:flex; align-items:center; justify-content:center;
+      background: radial-gradient(1200px 800px at 50% 20%, rgba(255,255,255,.06), rgba(0,0,0,.72));
+      color:#fff;
+    }
+    .card{
+      width:min(92vw, 520px);
+      border-radius:18px;
+      padding:18px 16px;
+      background:rgba(0,0,0,.45);
+      border:1px solid rgba(255,255,255,.14);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.55);
+    }
+    .title{ font-size:16px; font-weight:700; margin-bottom:8px; }
+    .desc{ font-size:13px; opacity:.9; line-height:1.5; }
+    .btnRow{ margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+    button{
+      appearance:none; border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.10);
+      color:#fff; padding:10px 12px; border-radius:12px;
+      font-weight:650; font-size:14px;
+    }
+    button:active{ transform: scale(0.98); }
+    .muted{ opacity:.75; font-size:12px; margin-top:10px; }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="cursorDot"></div>
+
+  <div id="hud">
+    <div>
+      <span id="badge">INIT</span>
+      <span>手机专用：照片墙 + 捏合放大</span>
+      <span id="toggleVideo">视频</span>
+    </div>
+    <div id="status">等待开始…</div>
+    <div id="tips">
+      ✋张开=照片墙；✊握拳=圣诞树；🤏捏合=用指尖选中并放大（松开退出）<br/>
+      建议：后置摄像头，手离镜头约 30–60cm。
+    </div>
+  </div>
+
+  <video id="video" playsinline autoplay muted></video>
+
+  <div id="startOverlay">
+    <div class="card">
+      <div class="title">开始体验</div>
+      <div class="desc">
+        需要摄像头权限。iPhone/部分安卓浏览器必须由“点击按钮”触发授权。<br/>
+        打开后：✋照片墙 / ✊圣诞树 / 🤏捏合选中放大
+      </div>
+      <div class="btnRow">
+        <button id="btnStart">开始（请求摄像头）</button>
+        <button id="btnStartFront">用前置摄像头</button>
+      </div>
+      <div class="muted">若无法授权：请用 Safari/Chrome，并确保页面地址是 https。</div>
+    </div>
+  </div>
+
+<script type="module">
+  import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+  import { EffectComposer } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
+  import { RenderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
+  import { UnrealBloomPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+  import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+  /* ============ 手机优先：性能自适应 ============ */
+  const isMobile = matchMedia("(pointer:coarse)").matches;
+  const dpr = Math.min(devicePixelRatio || 1, isMobile ? 1.6 : 2);
+
+  /* =========================
+     0) 参数区（手机友好）
+  ========================== */
+  const PARAM = {
+    // 性能：手机默认少一点
+    photoCount: isMobile ? 14 : 18,
+    photoW: 0.92,
+    photoH: 0.60,
+    framePad: 0.07,
+
+    wallCols: isMobile ? 4 : 6,
+    wallGapX: 0.12,
+    wallGapY: 0.16,
+    wallOrigin: new THREE.Vector3(0, 0.6, 0),
+    wallZ: -0.8,
+
+    treeHeight: 2.6,
+    treeRadius: 1.35,
+    treeTurns: 3.1,
+    treeOrigin: new THREE.Vector3(0, 0.15, 0),
+
+    camWallPos: new THREE.Vector3(0, 0.75, isMobile ? 5.6 : 5.2),
+    camTreePos: new THREE.Vector3(0, 0.95, isMobile ? 6.6 : 6.2),
+    focusOffsetZ: isMobile ? 2.05 : 1.8,
+    focusOffsetY: 0.12,
+
+    // 手势阈值：手机更宽松
+    pinchThresh: isMobile ? 0.066 : 0.055,
+    openPalmThresh: isMobile ? 0.68 : 0.62,
+    fistThresh: isMobile ? 0.40 : 0.36,
+
+    // 平滑：手机更稳
+    smooth: isMobile ? 0.075 : 0.08,
+    cursorSmooth: isMobile ? 0.22 : 0.25, // 光标低通滤波强度（越小越稳但更慢）
+    focusSmooth: 0.12,
+
+    hoverLift: 0.06,
+    focusScale: isMobile ? 1.60 : 1.55,
+
+    bloomStrength: isMobile ? 0.85 : 1.05,
+    bloomRadius: 0.25,
+    bloomThreshold: 0.14,
+  };
+
+  // 你可以换成自己的照片（推荐同源 ./photos/1.jpg 这种）
+  const PHOTO_URLS = [
+    "https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1481349518771-20055b2a7b24?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1482192505345-5655af888cc4?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1520975682038-07a7f528aa72?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1482192505345-5655af888cc4?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=800&q=60",
+  ];
+
+  /* =========================
+     1) DOM
+  ========================== */
+  const app = document.getElementById("app");
+  const badge = document.getElementById("badge");
+  const statusEl = document.getElementById("status");
+  const videoEl = document.getElementById("video");
+  const cursorDot = document.getElementById("cursorDot");
+  const overlay = document.getElementById("startOverlay");
+  const btnStart = document.getElementById("btnStart");
+  const btnStartFront = document.getElementById("btnStartFront");
+
+  document.getElementById("toggleVideo").onclick = () => {
+    videoEl.style.display = (videoEl.style.display === "none" ? "block" : "none");
+  };
+
+  /* =========================
+     2) Three.js 场景
+  ========================== */
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  app.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x05060a, 0.08);
+
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 120);
+  camera.position.copy(PARAM.camWallPos);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
+  key.position.set(2.8, 4.5, 2.5);
+  scene.add(key);
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), PARAM.bloomStrength, PARAM.bloomRadius, PARAM.bloomThreshold);
+  composer.addPass(bloom);
+
+  // 背景星点（手机少一点）
+  {
+    const bgStars = new THREE.BufferGeometry();
+    const n = isMobile ? 520 : 900;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const r = 18 * Math.random();
+      const theta = Math.random() * Math.PI * 2;
+      const y = (Math.random() - 0.5) * 10;
+      arr[i * 3 + 0] = Math.cos(theta) * r;
+      arr[i * 3 + 1] = y;
+      arr[i * 3 + 2] = Math.sin(theta) * r;
+    }
+    bgStars.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    const bgMat = new THREE.PointsMaterial({ size: 0.02, color: 0xffffff, transparent: true, opacity: 0.55 });
+    scene.add(new THREE.Points(bgStars, bgMat));
+  }
+
+  /* =========================
+     3) 照片卡片
+  ========================== */
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = "anonymous";
+
+  function makePhotoCard(url) {
+    const group = new THREE.Group();
+
+    const frameGeom = new THREE.PlaneGeometry(PARAM.photoW + PARAM.framePad, PARAM.photoH + PARAM.framePad);
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x10131a,
+      metalness: 0.2,
+      roughness: 0.55,
+      emissive: new THREE.Color(0x0a0c10),
+      emissiveIntensity: 0.7
+    });
+    const frame = new THREE.Mesh(frameGeom, frameMat);
+    group.add(frame);
+
+    const imgGeom = new THREE.PlaneGeometry(PARAM.photoW, PARAM.photoH);
+    const tex = loader.load(url);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const imgMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      metalness: 0.05,
+      roughness: 0.85,
+      emissive: new THREE.Color(0x0b0d12),
+      emissiveIntensity: 0.3
+    });
+    const img = new THREE.Mesh(imgGeom, imgMat);
+    img.position.z = 0.002;
+    group.add(img);
+
+    group.rotation.z = (Math.random() - 0.5) * 0.12;
+
+    group.userData = {
+      url, frame, img,
+      targetPos: new THREE.Vector3(),
+      targetQuat: new THREE.Quaternion(),
+      targetScale: 1,
+      basePos: new THREE.Vector3(),
+      baseQuat: new THREE.Quaternion(),
+    };
+    return group;
+  }
+
+  const photoCards = [];
+  const photoCount = Math.min(PARAM.photoCount, PHOTO_URLS.length);
+  for (let i = 0; i < photoCount; i++) {
+    const card = makePhotoCard(PHOTO_URLS[i]);
+    scene.add(card);
+    photoCards.push(card);
+  }
+
+  /* =========================
+     4) 布局：墙 / 树
+  ========================== */
+  function setWallTargets() {
+    const cols = PARAM.wallCols;
+    const rows = Math.ceil(photoCards.length / cols);
+    const totalW = cols * PARAM.photoW + (cols - 1) * PARAM.wallGapX;
+    const totalH = rows * PARAM.photoH + (rows - 1) * PARAM.wallGapY;
+
+    for (let i = 0; i < photoCards.length; i++) {
+      const card = photoCards[i];
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+
+      const x = (c * (PARAM.photoW + PARAM.wallGapX)) - totalW / 2 + PARAM.photoW / 2;
+      const y = (-(r * (PARAM.photoH + PARAM.wallGapY)) + totalH / 2 - PARAM.photoH / 2);
+
+      const pos = new THREE.Vector3(x, y, PARAM.wallZ).add(PARAM.wallOrigin);
+
+      // 让卡片面朝相机：用简单固定朝向（更稳）
+      const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, card.rotation.z));
+
+      card.userData.targetPos.copy(pos);
+      card.userData.targetQuat.copy(quat);
+      card.userData.targetScale = 1.0;
+    }
+  }
+
+  function setTreeTargets() {
+    const n = photoCards.length;
+    for (let i = 0; i < n; i++) {
+      const t = i / Math.max(1, (n - 1));
+      const y = t * PARAM.treeHeight;
+      const radius = PARAM.treeRadius * (0.18 + 0.82 * (1 - t));
+      const ang = t * Math.PI * 2 * PARAM.treeTurns + i * 0.35;
+
+      const x = Math.cos(ang) * radius;
+      const z = Math.sin(ang) * radius;
+
+      const pos = new THREE.Vector3(x, y - PARAM.treeHeight * 0.45, z).add(PARAM.treeOrigin);
+
+      // 树形让卡片大体朝外（便于选）
+      const outward = new THREE.Vector3(x, 0.12, z).normalize();
+      const lookAt = pos.clone().add(outward.multiplyScalar(2.2));
+      const m = new THREE.Matrix4().lookAt(pos, lookAt, new THREE.Vector3(0,1,0));
+      const quat = new THREE.Quaternion().setFromRotationMatrix(m).invert();
+
+      const card = photoCards[i];
+      card.userData.targetPos.copy(pos);
+      card.userData.targetQuat.copy(quat);
+      card.userData.targetScale = 0.95;
+    }
+  }
+
+  /* =========================
+     5) 手势识别
+  ========================== */
+  let handLandmarker = null;
+  let lastVideoTime = -1;
+
+  let mode = "INIT";           // WALL / TREE / FOCUS
+  let lastLayout = "WALL";
+  let isPinching = false;
+
+  const raycaster = new THREE.Raycaster();
+  const cursorNDC = new THREE.Vector2(0, 0);        // 平滑后的 NDC
+  const cursorNDC_raw = new THREE.Vector2(0, 0);    // 原始 NDC
+
+  let hovered = null;
+  let focused = null;
+
+  const camTargetPos = new THREE.Vector3().copy(PARAM.camWallPos);
+  const camTargetLook = new THREE.Vector3(0, 0.6, 0);
+
+  function setMode(next) {
+    if (next === mode) return;
+    mode = next;
+    badge.textContent = next;
+  }
+
+  function dist2(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.hypot(dx, dy);
+  }
+
+  function classifyGesture(lm) {
+    const wrist = lm[0];
+    const thumbTip = lm[4];
+    const indexTip = lm[8];
+    const middleTip = lm[12];
+    const ringTip = lm[16];
+    const pinkyTip = lm[20];
+
+    const pinch = dist2(thumbTip, indexTip);
+    const openScore = (dist2(indexTip, wrist) + dist2(middleTip, wrist) + dist2(ringTip, wrist) + dist2(pinkyTip, wrist)) / 4.0;
+
+    if (pinch < PARAM.pinchThresh) return "PINCH";
+    if (openScore > PARAM.openPalmThresh) return "OPEN";
+    if (openScore < PARAM.fistThresh) return "FIST";
+    return "UNKNOWN";
+  }
+
+  function updateCursorFromHand(lm, isFrontCamera) {
+    const indexTip = lm[8];
+
+    // 经验：前置需要镜像，后置一般不需要镜像
+    const x01 = isFrontCamera ? (1.0 - indexTip.x) : indexTip.x;
+    const y01 = indexTip.y;
+
+    cursorNDC_raw.set(x01 * 2 - 1, -(y01 * 2 - 1));
+    // 低通滤波：稳定光标
+    cursorNDC.lerp(cursorNDC_raw, PARAM.cursorSmooth);
+
+    cursorDot.style.left = `${x01 * innerWidth}px`;
+    cursorDot.style.top  = `${y01 * innerHeight}px`;
+  }
+
+  async function initCamera(facingMode) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width: { ideal: isMobile ? 1280 : 1280 },
+        height:{ ideal: isMobile ? 720  : 720  }
+      },
+      audio: false
+    });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+  }
+
+  async function initHandModel() {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 1
+    });
+  }
+
+  function pickByCursor() {
+    raycaster.setFromCamera(cursorNDC, camera);
+    const intersects = raycaster.intersectObjects(photoCards, true);
+    if (!intersects.length) return null;
+    let obj = intersects[0].object;
+    while (obj && !photoCards.includes(obj)) obj = obj.parent;
+    return (obj && photoCards.includes(obj)) ? obj : null;
+  }
+
+  function applyHover(card) {
+    if (hovered && hovered !== card && hovered !== focused) {
+      hovered.userData.frame.material.emissiveIntensity = 0.7;
+      hovered.position.y -= PARAM.hoverLift;
+    }
+    hovered = card;
+    if (hovered && hovered !== focused) {
+      hovered.userData.frame.material.emissiveIntensity = 1.25;
+      hovered.position.y += PARAM.hoverLift;
+    }
+  }
+
+  function enterFocus(card) {
+    if (!card) return;
+
+    if (focused && focused !== card) {
+      focused.userData.frame.material.emissiveIntensity = 0.7;
+      focused.scale.setScalar(focused.userData.targetScale);
+    }
+
+    focused = card;
+    focused.userData.basePos.copy(focused.position);
+    focused.userData.baseQuat.copy(focused.quaternion);
+
+    setMode("FOCUS");
+    focused.userData.frame.material.emissiveIntensity = 1.6;
+
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(focused.quaternion);
+    const focusCamPos = focused.position.clone().add(forward.multiplyScalar(PARAM.focusOffsetZ));
+    focusCamPos.y += PARAM.focusOffsetY;
+
+    camTargetPos.copy(focusCamPos);
+    camTargetLook.copy(focused.position);
+  }
+
+  function exitFocus() {
+    if (!focused) return;
+
+    focused.userData.frame.material.emissiveIntensity = 0.7;
+    focused.scale.setScalar(focused.userData.targetScale);
+    focused = null;
+
+    if (lastLayout === "TREE") {
+      camTargetPos.copy(PARAM.camTreePos);
+      camTargetLook.set(0, 0.55, 0);
+      setMode("TREE");
+    } else {
+      camTargetPos.copy(PARAM.camWallPos);
+      camTargetLook.set(0, 0.6, 0);
+      setMode("WALL");
+    }
+  }
+
+  let usingFront = false;
+
+  async function startAll(useFront) {
+    try {
+      usingFront = useFront;
+      statusEl.textContent = "请求摄像头权限…";
+      badge.textContent = "INIT";
+
+      // 后置优先（手机更稳）
+      if (useFront) {
+        await initCamera("user");
+      } else {
+        await initCamera({ ideal: "environment" });
+      }
+
+      statusEl.textContent = "加载手部模型…";
+      await initHandModel();
+
+      setWallTargets();
+      camTargetPos.copy(PARAM.camWallPos);
+      camTargetLook.set(0, 0.6, 0);
+      lastLayout = "WALL";
+      setMode("WALL");
+
+      overlay.style.display = "none";
+      statusEl.textContent = "就绪：✋照片墙 / ✊圣诞树 / 🤏捏合选中放大";
+    } catch (e) {
+      console.error(e);
+      badge.textContent = "ERROR";
+      statusEl.textContent = "启动失败：请确认已允许摄像头，且用 https 打开。";
+    }
+  }
+
+  btnStart.onclick = () => startAll(false);
+  btnStartFront.onclick = () => startAll(true);
+
+  function updateFromHands() {
+    if (!handLandmarker || videoEl.readyState < 2) return;
+
+    const now = performance.now();
+    if (videoEl.currentTime === lastVideoTime) return;
+    lastVideoTime = videoEl.currentTime;
+
+    const result = handLandmarker.detectForVideo(videoEl, now);
+    if (!result?.landmarks?.length) {
+      cursorDot.style.display = "none";
+      isPinching = false;
+      return;
+    }
+
+    const lm = result.landmarks[0];
+    updateCursorFromHand(lm, usingFront);
+
+    const g = classifyGesture(lm);
+
+    if (g === "OPEN" && mode !== "FOCUS") {
+      lastLayout = "WALL";
+      setWallTargets();
+      camTargetPos.copy(PARAM.camWallPos);
+      camTargetLook.set(0, 0.6, 0);
+      setMode("WALL");
+    }
+    if (g === "FIST" && mode !== "FOCUS") {
+      lastLayout = "TREE";
+      setTreeTargets();
+      camTargetPos.copy(PARAM.camTreePos);
+      camTargetLook.set(0, 0.55, 0);
+      setMode("TREE");
+    }
+
+    if (g === "PINCH") {
+      cursorDot.style.display = "block";
+
+      if (!isPinching) {
+        const card = pickByCursor();
+        applyHover(card);
+        if (card) enterFocus(card);
+        isPinching = true;
+      } else {
+        if (mode !== "FOCUS") {
+          const card = pickByCursor();
+          applyHover(card);
+        }
+      }
+    } else {
+      cursorDot.style.display = "none";
+      if (isPinching && mode === "FOCUS") exitFocus();
+      isPinching = false;
+    }
+  }
+
+  function lerpCardsAndCamera() {
+    for (const card of photoCards) {
+      const isFocus = (card === focused);
+
+      card.position.lerp(card.userData.targetPos, PARAM.smooth);
+      card.quaternion.slerp(card.userData.targetQuat, PARAM.smooth);
+
+      const targetS = isFocus ? (card.userData.targetScale * PARAM.focusScale) : card.userData.targetScale;
+      const s = card.scale.x + (targetS - card.scale.x) * (isFocus ? PARAM.focusSmooth : PARAM.smooth);
+      card.scale.setScalar(s);
+
+      if (isFocus) card.lookAt(camera.position);
+    }
+
+    camera.position.lerp(camTargetPos, (mode === "FOCUS") ? PARAM.focusSmooth : PARAM.smooth);
+    camera.lookAt(camTargetLook);
+  }
+
+  function tick() {
+    requestAnimationFrame(tick);
+    updateFromHands();
+    lerpCardsAndCamera();
+    scene.rotation.y += 0.00085;
+    composer.render();
+  }
+  tick();
+
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.6 : 2));
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+  });
+
+</script>
+</body>
+</html>
