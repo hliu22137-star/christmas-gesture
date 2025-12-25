@@ -5,630 +5,532 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>手机专用：照片墙 + 捏合选中放大</title>
   <style>
-    html, body { margin:0; height:100%; overflow:hidden; background:#05060a; font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", sans-serif; touch-action:none; }
+    html, body { margin:0; height:100%; overflow:hidden; background:#06060a; font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif; }
     #app { position:fixed; inset:0; }
-
     #hud{
-      position:fixed; left:12px; top:10px; z-index:10;
-      color:rgba(255,255,255,.92); font-size:13px; line-height:1.4;
-      padding:10px 12px; border-radius:12px;
+      position:fixed; left:12px; top:10px; z-index:50;
+      color:rgba(255,255,255,.92); font-size:13px; line-height:1.45;
+      padding:10px 12px; border-radius:14px;
       background:rgba(0,0,0,.38); backdrop-filter: blur(10px);
       border:1px solid rgba(255,255,255,.12);
       max-width:min(92vw, 560px);
     }
-    #badge{ display:inline-block; padding:2px 8px; border-radius:999px; margin-right:8px; font-weight:650;
+    #badge{
+      display:inline-block; padding:2px 8px; border-radius:999px; margin-right:8px; font-weight:650;
       background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.14);
     }
-    #status { margin-top:6px; opacity:.95; }
-    #tips { margin-top:8px; opacity:.85; }
-
-    #video {
-      position:fixed; right:10px; bottom:10px; width:190px; aspect-ratio: 4/3;
-      border-radius:14px; z-index:10; display:none;
+    #status{ margin-top:6px; opacity:.95; }
+    #tips{ margin-top:8px; opacity:.85; }
+    #panel{
+      position:fixed; left:12px; right:12px; bottom:14px; z-index:60;
+      padding:12px; border-radius:18px;
+      background:rgba(0,0,0,.40); backdrop-filter: blur(12px);
+      border:1px solid rgba(255,255,255,.12);
+      color:rgba(255,255,255,.92);
+    }
+    #panel h3{ margin:0 0 8px 0; font-size:18px; font-weight:800; }
+    #panel p{ margin:6px 0; font-size:13px; opacity:.9; line-height:1.45; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    button{
+      appearance:none; border:none; cursor:pointer;
+      padding:12px 14px; border-radius:14px;
+      background:rgba(255,255,255,.12); color:#fff; font-weight:750;
+      border:1px solid rgba(255,255,255,.14);
+    }
+    button:active{ transform:scale(.99); }
+    #video{
+      position:fixed; right:10px; bottom:10px; width:190px; aspect-ratio:4/3;
+      border-radius:14px; z-index:40; display:none;
       border:1px solid rgba(255,255,255,.16);
-      box-shadow: 0 16px 40px rgba(0,0,0,.45);
+      box-shadow:0 16px 40px rgba(0,0,0,.45);
       background:#000;
     }
     #toggleVideo{
       cursor:pointer; user-select:none; display:inline-block; margin-left:8px;
-      padding:2px 8px; border-radius:999px;
-      background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.14);
+      padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.10);
     }
-
     #cursorDot{
       position:fixed; width:12px; height:12px; border-radius:50%;
-      border:2px solid rgba(255,255,255,.90);
-      box-shadow:0 0 18px rgba(255,255,255,.35);
-      pointer-events:none; z-index:20;
+      background:rgba(255,255,255,.85); box-shadow:0 0 0 6px rgba(255,255,255,.10);
+      left:-100px; top:-100px; z-index:55; pointer-events:none;
       transform:translate(-50%,-50%);
-      display:none;
     }
-
-    /* iOS/手机：启动遮罩（用户点击触发 getUserMedia） */
-    #startOverlay{
-      position:fixed; inset:0; z-index:50;
-      display:flex; align-items:center; justify-content:center;
-      background: radial-gradient(1200px 800px at 50% 20%, rgba(255,255,255,.06), rgba(0,0,0,.72));
-      color:#fff;
-    }
-    .card{
-      width:min(92vw, 520px);
-      border-radius:18px;
-      padding:18px 16px;
-      background:rgba(0,0,0,.45);
-      border:1px solid rgba(255,255,255,.14);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 20px 60px rgba(0,0,0,.55);
-    }
-    .title{ font-size:16px; font-weight:700; margin-bottom:8px; }
-    .desc{ font-size:13px; opacity:.9; line-height:1.5; }
-    .btnRow{ margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
-    button{
-      appearance:none; border:1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.10);
-      color:#fff; padding:10px 12px; border-radius:12px;
-      font-weight:650; font-size:14px;
-    }
-    button:active{ transform: scale(0.98); }
-    .muted{ opacity:.75; font-size:12px; margin-top:10px; }
   </style>
 </head>
-
 <body>
   <div id="app"></div>
-  <div id="cursorDot"></div>
 
   <div id="hud">
-    <div>
-      <span id="badge">INIT</span>
-      <span>手机专用：照片墙 + 捏合放大</span>
-      <span id="toggleVideo">视频</span>
-    </div>
+    <div><span id="badge">INIT</span>手机专用：照片墙 + 捏合选中放大 <span id="toggleVideo">视频</span></div>
     <div id="status">等待开始…</div>
     <div id="tips">
-      ✋张开=照片墙；✊握拳=圣诞树；🤏捏合=用指尖选中并放大（松开退出）<br/>
+      ✋ 张开=照片墙； ✊ 握拳=圣诞树； 🤏 捏合=用拇指尖选中并放大（松开退出）<br/>
       建议：后置摄像头，手离镜头约 30–60cm。
     </div>
   </div>
 
-  <video id="video" playsinline autoplay muted></video>
-
-  <div id="startOverlay">
-    <div class="card">
-      <div class="title">开始体验</div>
-      <div class="desc">
-        需要摄像头权限。iPhone/部分安卓浏览器必须由“点击按钮”触发授权。<br/>
-        打开后：✋照片墙 / ✊圣诞树 / 🤏捏合选中放大
-      </div>
-      <div class="btnRow">
-        <button id="btnStart">开始（请求摄像头）</button>
-        <button id="btnStartFront">用前置摄像头</button>
-      </div>
-      <div class="muted">若无法授权：请用 Safari/Chrome，并确保页面地址是 https。</div>
+  <div id="panel">
+    <h3>开始体验</h3>
+    <p>需要摄像头权限。iPhone/Safari 必须由“点击按钮”触发授权。</p>
+    <p>打开后：✋ 照片墙 / ✊ 圣诞树 / 🤏 捏合选中放大</p>
+    <div class="row">
+      <button id="btnStart">开始（请求摄像头）</button>
+      <button id="btnStartFront">用前置摄像头</button>
     </div>
+    <p style="margin-top:10px; opacity:.8;">若无法授权：请用 Safari 无痕模式打开，并确认页面地址是 https。</p>
   </div>
 
-<script type="module">
-  import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-  import { EffectComposer } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
-  import { RenderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
-  import { UnrealBloomPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-  import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  <video id="video" playsinline muted></video>
+  <div id="cursorDot"></div>
 
-  /* ============ 手机优先：性能自适应 ============ */
-  const isMobile = matchMedia("(pointer:coarse)").matches;
-  const dpr = Math.min(devicePixelRatio || 1, isMobile ? 1.6 : 2);
+  <!-- Three.js -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
-  /* =========================
-     0) 参数区（手机友好）
-  ========================== */
-  const PARAM = {
-    // 性能：手机默认少一点
-    photoCount: isMobile ? 14 : 18,
-    photoW: 0.92,
-    photoH: 0.60,
-    framePad: 0.07,
+  <!-- MediaPipe Hands (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-    wallCols: isMobile ? 4 : 6,
-    wallGapX: 0.12,
-    wallGapY: 0.16,
-    wallOrigin: new THREE.Vector3(0, 0.6, 0),
-    wallZ: -0.8,
-
-    treeHeight: 2.6,
-    treeRadius: 1.35,
-    treeTurns: 3.1,
-    treeOrigin: new THREE.Vector3(0, 0.15, 0),
-
-    camWallPos: new THREE.Vector3(0, 0.75, isMobile ? 5.6 : 5.2),
-    camTreePos: new THREE.Vector3(0, 0.95, isMobile ? 6.6 : 6.2),
-    focusOffsetZ: isMobile ? 2.05 : 1.8,
-    focusOffsetY: 0.12,
-
-    // 手势阈值：手机更宽松
-    pinchThresh: isMobile ? 0.066 : 0.055,
-    openPalmThresh: isMobile ? 0.68 : 0.62,
-    fistThresh: isMobile ? 0.40 : 0.36,
-
-    // 平滑：手机更稳
-    smooth: isMobile ? 0.075 : 0.08,
-    cursorSmooth: isMobile ? 0.22 : 0.25, // 光标低通滤波强度（越小越稳但更慢）
-    focusSmooth: 0.12,
-
-    hoverLift: 0.06,
-    focusScale: isMobile ? 1.60 : 1.55,
-
-    bloomStrength: isMobile ? 0.85 : 1.05,
-    bloomRadius: 0.25,
-    bloomThreshold: 0.14,
-  };
-
-  // 你可以换成自己的照片（推荐同源 ./photos/1.jpg 这种）
-  const PHOTO_URLS = [
-    "https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1481349518771-20055b2a7b24?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1482192505345-5655af888cc4?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1520975682038-07a7f528aa72?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1482192505345-5655af888cc4?auto=format&fit=crop&w=800&q=60",
-    "https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=800&q=60",
-  ];
-
-  /* =========================
-     1) DOM
-  ========================== */
-  const app = document.getElementById("app");
-  const badge = document.getElementById("badge");
-  const statusEl = document.getElementById("status");
-  const videoEl = document.getElementById("video");
-  const cursorDot = document.getElementById("cursorDot");
-  const overlay = document.getElementById("startOverlay");
-  const btnStart = document.getElementById("btnStart");
-  const btnStartFront = document.getElementById("btnStartFront");
-
-  document.getElementById("toggleVideo").onclick = () => {
-    videoEl.style.display = (videoEl.style.display === "none" ? "block" : "none");
-  };
-
-  /* =========================
-     2) Three.js 场景
-  ========================== */
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(dpr);
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  app.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x05060a, 0.08);
-
-  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 120);
-  camera.position.copy(PARAM.camWallPos);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const key = new THREE.DirectionalLight(0xffffff, 0.9);
-  key.position.set(2.8, 4.5, 2.5);
-  scene.add(key);
-
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), PARAM.bloomStrength, PARAM.bloomRadius, PARAM.bloomThreshold);
-  composer.addPass(bloom);
-
-  // 背景星点（手机少一点）
-  {
-    const bgStars = new THREE.BufferGeometry();
-    const n = isMobile ? 520 : 900;
-    const arr = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const r = 18 * Math.random();
-      const theta = Math.random() * Math.PI * 2;
-      const y = (Math.random() - 0.5) * 10;
-      arr[i * 3 + 0] = Math.cos(theta) * r;
-      arr[i * 3 + 1] = y;
-      arr[i * 3 + 2] = Math.sin(theta) * r;
-    }
-    bgStars.setAttribute("position", new THREE.BufferAttribute(arr, 3));
-    const bgMat = new THREE.PointsMaterial({ size: 0.02, color: 0xffffff, transparent: true, opacity: 0.55 });
-    scene.add(new THREE.Points(bgStars, bgMat));
-  }
-
-  /* =========================
-     3) 照片卡片
-  ========================== */
-  const loader = new THREE.TextureLoader();
-  loader.crossOrigin = "anonymous";
-
-  function makePhotoCard(url) {
-    const group = new THREE.Group();
-
-    const frameGeom = new THREE.PlaneGeometry(PARAM.photoW + PARAM.framePad, PARAM.photoH + PARAM.framePad);
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: 0x10131a,
-      metalness: 0.2,
-      roughness: 0.55,
-      emissive: new THREE.Color(0x0a0c10),
-      emissiveIntensity: 0.7
-    });
-    const frame = new THREE.Mesh(frameGeom, frameMat);
-    group.add(frame);
-
-    const imgGeom = new THREE.PlaneGeometry(PARAM.photoW, PARAM.photoH);
-    const tex = loader.load(url);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const imgMat = new THREE.MeshStandardMaterial({
-      map: tex,
-      metalness: 0.05,
-      roughness: 0.85,
-      emissive: new THREE.Color(0x0b0d12),
-      emissiveIntensity: 0.3
-    });
-    const img = new THREE.Mesh(imgGeom, imgMat);
-    img.position.z = 0.002;
-    group.add(img);
-
-    group.rotation.z = (Math.random() - 0.5) * 0.12;
-
-    group.userData = {
-      url, frame, img,
-      targetPos: new THREE.Vector3(),
-      targetQuat: new THREE.Quaternion(),
-      targetScale: 1,
-      basePos: new THREE.Vector3(),
-      baseQuat: new THREE.Quaternion(),
+  <script>
+    // ========= 参数（iPhone 推荐） =========
+    const PARAM = {
+      cursorSmooth: 0.20,
+      pinchThresh: 0.070,       // 拇指尖-食指尖距离阈值（越小越难触发）
+      openPalmThresh: 0.70,     // 张开判据
+      fistThresh: 0.42,         // 握拳判据
+      focusScale: 2.15,
+      focusSmooth: 0.18,
+      idleRotate: 0.0008,
     };
-    return group;
-  }
 
-  const photoCards = [];
-  const photoCount = Math.min(PARAM.photoCount, PHOTO_URLS.length);
-  for (let i = 0; i < photoCount; i++) {
-    const card = makePhotoCard(PHOTO_URLS[i]);
-    scene.add(card);
-    photoCards.push(card);
-  }
+    // ========= DOM =========
+    const badgeEl = document.getElementById('badge');
+    const statusEl = document.getElementById('status');
+    const panelEl  = document.getElementById('panel');
+    const videoEl  = document.getElementById('video');
+    const dotEl    = document.getElementById('cursorDot');
+    const toggleVideoEl = document.getElementById('toggleVideo');
+    const btnStart = document.getElementById('btnStart');
+    const btnStartFront = document.getElementById('btnStartFront');
 
-  /* =========================
-     4) 布局：墙 / 树
-  ========================== */
-  function setWallTargets() {
-    const cols = PARAM.wallCols;
-    const rows = Math.ceil(photoCards.length / cols);
-    const totalW = cols * PARAM.photoW + (cols - 1) * PARAM.wallGapX;
-    const totalH = rows * PARAM.photoH + (rows - 1) * PARAM.wallGapY;
+    // ========= Three.js 场景 =========
+    const app = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    app.appendChild(renderer.domElement);
 
-    for (let i = 0; i < photoCards.length; i++) {
-      const card = photoCards[i];
-      const c = i % cols;
-      const r = Math.floor(i / cols);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+    camera.position.set(0, 0, 10);
 
-      const x = (c * (PARAM.photoW + PARAM.wallGapX)) - totalW / 2 + PARAM.photoW / 2;
-      const y = (-(r * (PARAM.photoH + PARAM.wallGapY)) + totalH / 2 - PARAM.photoH / 2);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+    scene.add(ambient);
 
-      const pos = new THREE.Vector3(x, y, PARAM.wallZ).add(PARAM.wallOrigin);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir.position.set(4, 8, 6);
+    scene.add(dir);
 
-      // 让卡片面朝相机：用简单固定朝向（更稳）
-      const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, card.rotation.z));
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2(0, 0);
 
-      card.userData.targetPos.copy(pos);
-      card.userData.targetQuat.copy(quat);
-      card.userData.targetScale = 1.0;
+    // ========= 照片墙 =========
+    const photoGroup = new THREE.Group();
+    scene.add(photoGroup);
+
+    const cards = [];
+    const cardCount = 12;
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = "anonymous";
+
+    function makeCard(tex) {
+      const geo = new THREE.PlaneGeometry(1.6, 1.1, 1, 1);
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.65,
+        metalness: 0.05
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+
+      // 细边框（用第二层平面）
+      const frameGeo = new THREE.PlaneGeometry(1.66, 1.16);
+      const frameMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.12 });
+      const frame = new THREE.Mesh(frameGeo, frameMat);
+      frame.position.z = -0.001;
+      mesh.add(frame);
+
+      mesh.userData = {
+        basePos: new THREE.Vector3(),
+        targetPos: new THREE.Vector3(),
+        baseQuat: new THREE.Quaternion(),
+        targetQuat: new THREE.Quaternion(),
+        baseScale: 1,
+        targetScale: 1,
+      };
+      return mesh;
     }
-  }
 
-  function setTreeTargets() {
-    const n = photoCards.length;
-    for (let i = 0; i < n; i++) {
-      const t = i / Math.max(1, (n - 1));
-      const y = t * PARAM.treeHeight;
-      const radius = PARAM.treeRadius * (0.18 + 0.82 * (1 - t));
-      const ang = t * Math.PI * 2 * PARAM.treeTurns + i * 0.35;
+    function layoutWall() {
+      const radius = 4.2;
+      for (let i=0;i<cards.length;i++){
+        const a = (i / cards.length) * Math.PI * 2;
+        const y = ((i % 4) - 1.5) * 1.35;
+        const x = Math.cos(a) * radius;
+        const z = Math.sin(a) * radius;
+        const m = cards[i];
+        m.userData.basePos.set(x, y, z);
+        m.userData.targetPos.copy(m.userData.basePos);
 
-      const x = Math.cos(ang) * radius;
-      const z = Math.sin(ang) * radius;
-
-      const pos = new THREE.Vector3(x, y - PARAM.treeHeight * 0.45, z).add(PARAM.treeOrigin);
-
-      // 树形让卡片大体朝外（便于选）
-      const outward = new THREE.Vector3(x, 0.12, z).normalize();
-      const lookAt = pos.clone().add(outward.multiplyScalar(2.2));
-      const m = new THREE.Matrix4().lookAt(pos, lookAt, new THREE.Vector3(0,1,0));
-      const quat = new THREE.Quaternion().setFromRotationMatrix(m).invert();
-
-      const card = photoCards[i];
-      card.userData.targetPos.copy(pos);
-      card.userData.targetQuat.copy(quat);
-      card.userData.targetScale = 0.95;
+        // 朝向中心
+        const look = new THREE.Matrix4().lookAt(
+          m.userData.basePos,
+          new THREE.Vector3(0, y*0.15, 0),
+          new THREE.Vector3(0,1,0)
+        );
+        m.userData.baseQuat.setFromRotationMatrix(look);
+        m.userData.targetQuat.copy(m.userData.baseQuat);
+        m.position.copy(m.userData.basePos);
+        m.quaternion.copy(m.userData.baseQuat);
+        m.scale.setScalar(1);
+      }
     }
-  }
 
-  /* =========================
-     5) 手势识别
-  ========================== */
-  let handLandmarker = null;
-  let lastVideoTime = -1;
-
-  let mode = "INIT";           // WALL / TREE / FOCUS
-  let lastLayout = "WALL";
-  let isPinching = false;
-
-  const raycaster = new THREE.Raycaster();
-  const cursorNDC = new THREE.Vector2(0, 0);        // 平滑后的 NDC
-  const cursorNDC_raw = new THREE.Vector2(0, 0);    // 原始 NDC
-
-  let hovered = null;
-  let focused = null;
-
-  const camTargetPos = new THREE.Vector3().copy(PARAM.camWallPos);
-  const camTargetLook = new THREE.Vector3(0, 0.6, 0);
-
-  function setMode(next) {
-    if (next === mode) return;
-    mode = next;
-    badge.textContent = next;
-  }
-
-  function dist2(a, b) {
-    const dx = a.x - b.x, dy = a.y - b.y;
-    return Math.hypot(dx, dy);
-  }
-
-  function classifyGesture(lm) {
-    const wrist = lm[0];
-    const thumbTip = lm[4];
-    const indexTip = lm[8];
-    const middleTip = lm[12];
-    const ringTip = lm[16];
-    const pinkyTip = lm[20];
-
-    const pinch = dist2(thumbTip, indexTip);
-    const openScore = (dist2(indexTip, wrist) + dist2(middleTip, wrist) + dist2(ringTip, wrist) + dist2(pinkyTip, wrist)) / 4.0;
-
-    if (pinch < PARAM.pinchThresh) return "PINCH";
-    if (openScore > PARAM.openPalmThresh) return "OPEN";
-    if (openScore < PARAM.fistThresh) return "FIST";
-    return "UNKNOWN";
-  }
-
-  function updateCursorFromHand(lm, isFrontCamera) {
-    const indexTip = lm[8];
-
-    // 经验：前置需要镜像，后置一般不需要镜像
-    const x01 = isFrontCamera ? (1.0 - indexTip.x) : indexTip.x;
-    const y01 = indexTip.y;
-
-    cursorNDC_raw.set(x01 * 2 - 1, -(y01 * 2 - 1));
-    // 低通滤波：稳定光标
-    cursorNDC.lerp(cursorNDC_raw, PARAM.cursorSmooth);
-
-    cursorDot.style.left = `${x01 * innerWidth}px`;
-    cursorDot.style.top  = `${y01 * innerHeight}px`;
-  }
-
-  async function initCamera(facingMode) {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode,
-        width: { ideal: isMobile ? 1280 : 1280 },
-        height:{ ideal: isMobile ? 720  : 720  }
-      },
-      audio: false
+    // 使用 picsum 占位图（你可换成自己的图片 URL）
+    const seeds = Array.from({length: cardCount}, (_,i)=>`xmas_${i+1}`);
+    let loaded = 0;
+    seeds.forEach((s, i) => {
+      const url = `https://picsum.photos/seed/${encodeURIComponent(s)}/800/560`;
+      loader.load(url, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        const card = makeCard(tex);
+        cards.push(card);
+        photoGroup.add(card);
+        loaded++;
+        if (loaded === cardCount) {
+          layoutWall();
+        }
+      });
     });
-    videoEl.srcObject = stream;
-    await videoEl.play();
-  }
 
-  async function initHandModel() {
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-    );
-    handLandmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-        delegate: "GPU"
-      },
-      runningMode: "VIDEO",
-      numHands: 1
-    });
-  }
+    // ========= 圣诞树（简化版） =========
+    const treeGroup = new THREE.Group();
+    treeGroup.visible = false;
+    scene.add(treeGroup);
 
-  function pickByCursor() {
-    raycaster.setFromCamera(cursorNDC, camera);
-    const intersects = raycaster.intersectObjects(photoCards, true);
-    if (!intersects.length) return null;
-    let obj = intersects[0].object;
-    while (obj && !photoCards.includes(obj)) obj = obj.parent;
-    return (obj && photoCards.includes(obj)) ? obj : null;
-  }
+    function buildTree() {
+      // 树身
+      const cone1 = new THREE.Mesh(
+        new THREE.ConeGeometry(1.8, 2.6, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1f7a3a, roughness: 0.8, metalness: 0.0 })
+      );
+      cone1.position.y = 0.3;
 
-  function applyHover(card) {
-    if (hovered && hovered !== card && hovered !== focused) {
-      hovered.userData.frame.material.emissiveIntensity = 0.7;
-      hovered.position.y -= PARAM.hoverLift;
-    }
-    hovered = card;
-    if (hovered && hovered !== focused) {
-      hovered.userData.frame.material.emissiveIntensity = 1.25;
-      hovered.position.y += PARAM.hoverLift;
-    }
-  }
+      const cone2 = new THREE.Mesh(
+        new THREE.ConeGeometry(1.3, 2.1, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1c6d33, roughness: 0.8, metalness: 0.0 })
+      );
+      cone2.position.y = 1.55;
 
-  function enterFocus(card) {
-    if (!card) return;
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.28, 0.32, 1.0, 20),
+        new THREE.MeshStandardMaterial({ color: 0x6b3f1f, roughness: 0.9, metalness: 0.0 })
+      );
+      trunk.position.y = -1.15;
 
-    if (focused && focused !== card) {
-      focused.userData.frame.material.emissiveIntensity = 0.7;
-      focused.scale.setScalar(focused.userData.targetScale);
-    }
+      treeGroup.add(cone1, cone2, trunk);
 
-    focused = card;
-    focused.userData.basePos.copy(focused.position);
-    focused.userData.baseQuat.copy(focused.quaternion);
-
-    setMode("FOCUS");
-    focused.userData.frame.material.emissiveIntensity = 1.6;
-
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(focused.quaternion);
-    const focusCamPos = focused.position.clone().add(forward.multiplyScalar(PARAM.focusOffsetZ));
-    focusCamPos.y += PARAM.focusOffsetY;
-
-    camTargetPos.copy(focusCamPos);
-    camTargetLook.copy(focused.position);
-  }
-
-  function exitFocus() {
-    if (!focused) return;
-
-    focused.userData.frame.material.emissiveIntensity = 0.7;
-    focused.scale.setScalar(focused.userData.targetScale);
-    focused = null;
-
-    if (lastLayout === "TREE") {
-      camTargetPos.copy(PARAM.camTreePos);
-      camTargetLook.set(0, 0.55, 0);
-      setMode("TREE");
-    } else {
-      camTargetPos.copy(PARAM.camWallPos);
-      camTargetLook.set(0, 0.6, 0);
-      setMode("WALL");
-    }
-  }
-
-  let usingFront = false;
-
-  async function startAll(useFront) {
-    try {
-      usingFront = useFront;
-      statusEl.textContent = "请求摄像头权限…";
-      badge.textContent = "INIT";
-
-      // 后置优先（手机更稳）
-      if (useFront) {
-        await initCamera("user");
-      } else {
-        await initCamera({ ideal: "environment" });
+      // 彩灯
+      const bulbGeo = new THREE.SphereGeometry(0.10, 14, 14);
+      for (let i=0;i<20;i++){
+        const m = new THREE.Mesh(
+          bulbGeo,
+          new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(i/20, 0.9, 0.6), roughness: 0.3, metalness: 0.1, emissive: new THREE.Color().setHSL(i/20, 0.9, 0.3), emissiveIntensity: 0.8 })
+        );
+        const a = i/20 * Math.PI*2;
+        const r = 1.2 - (i%5)*0.15;
+        m.position.set(Math.cos(a)*r, (i%10)*0.22 - 0.2, Math.sin(a)*r);
+        treeGroup.add(m);
       }
 
-      statusEl.textContent = "加载手部模型…";
-      await initHandModel();
-
-      setWallTargets();
-      camTargetPos.copy(PARAM.camWallPos);
-      camTargetLook.set(0, 0.6, 0);
-      lastLayout = "WALL";
-      setMode("WALL");
-
-      overlay.style.display = "none";
-      statusEl.textContent = "就绪：✋照片墙 / ✊圣诞树 / 🤏捏合选中放大";
-    } catch (e) {
-      console.error(e);
-      badge.textContent = "ERROR";
-      statusEl.textContent = "启动失败：请确认已允许摄像头，且用 https 打开。";
+      // 星星
+      const star = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.22, 0),
+        new THREE.MeshStandardMaterial({ color: 0xffdd66, emissive: 0xffcc33, emissiveIntensity: 1.0, roughness: 0.25 })
+      );
+      star.position.set(0, 2.55, 0);
+      treeGroup.add(star);
     }
-  }
+    buildTree();
 
-  btnStart.onclick = () => startAll(false);
-  btnStartFront.onclick = () => startAll(true);
+    // ========= 手势状态 =========
+    let mode = "INIT"; // INIT | WALL | TREE | FOCUS
+    let focused = null;
 
-  function updateFromHands() {
-    if (!handLandmarker || videoEl.readyState < 2) return;
+    // cursor（屏幕坐标）
+    let cursorX = innerWidth * 0.5;
+    let cursorY = innerHeight * 0.5;
+    let cursorVis = false;
 
-    const now = performance.now();
-    if (videoEl.currentTime === lastVideoTime) return;
-    lastVideoTime = videoEl.currentTime;
-
-    const result = handLandmarker.detectForVideo(videoEl, now);
-    if (!result?.landmarks?.length) {
-      cursorDot.style.display = "none";
-      isPinching = false;
-      return;
-    }
-
-    const lm = result.landmarks[0];
-    updateCursorFromHand(lm, usingFront);
-
-    const g = classifyGesture(lm);
-
-    if (g === "OPEN" && mode !== "FOCUS") {
-      lastLayout = "WALL";
-      setWallTargets();
-      camTargetPos.copy(PARAM.camWallPos);
-      camTargetLook.set(0, 0.6, 0);
-      setMode("WALL");
-    }
-    if (g === "FIST" && mode !== "FOCUS") {
-      lastLayout = "TREE";
-      setTreeTargets();
-      camTargetPos.copy(PARAM.camTreePos);
-      camTargetLook.set(0, 0.55, 0);
-      setMode("TREE");
-    }
-
-    if (g === "PINCH") {
-      cursorDot.style.display = "block";
-
-      if (!isPinching) {
-        const card = pickByCursor();
-        applyHover(card);
-        if (card) enterFocus(card);
-        isPinching = true;
+    function setMode(m) {
+      if (mode === m) return;
+      mode = m;
+      badgeEl.textContent = m;
+      if (m === "WALL") {
+        photoGroup.visible = true;
+        treeGroup.visible = false;
+        statusEl.textContent = "照片墙模式：张开手保持；捏合可选中放大";
+      } else if (m === "TREE") {
+        photoGroup.visible = false;
+        treeGroup.visible = true;
+        statusEl.textContent = "圣诞树模式：握拳保持；张开回照片墙";
+      } else if (m === "FOCUS") {
+        photoGroup.visible = true;
+        treeGroup.visible = false;
+        statusEl.textContent = "已选中：松开捏合退出";
       } else {
-        if (mode !== "FOCUS") {
-          const card = pickByCursor();
-          applyHover(card);
+        photoGroup.visible = true;
+        treeGroup.visible = false;
+        statusEl.textContent = "等待开始…";
+      }
+    }
+
+    function smoothTo(a, b, t){ return a + (b-a)*t; }
+
+    function setCursor(nx, ny) {
+      // nx, ny: 0..1
+      const x = nx * innerWidth;
+      const y = ny * innerHeight;
+      cursorX = smoothTo(cursorX, x, PARAM.cursorSmooth);
+      cursorY = smoothTo(cursorY, y, PARAM.cursorSmooth);
+      dotEl.style.left = cursorX + "px";
+      dotEl.style.top  = cursorY + "px";
+      cursorVis = true;
+    }
+
+    function hideCursor() {
+      cursorVis = false;
+      dotEl.style.left = "-100px";
+      dotEl.style.top  = "-100px";
+    }
+
+    function landmarkDist(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = (a.z || 0) - (b.z || 0);
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+
+    // 张开/握拳粗判（用指尖到掌心的距离）
+    function openness(lm) {
+      const palm = lm[0]; // wrist
+      const tips = [4,8,12,16,20].map(i=>lm[i]);
+      const ds = tips.map(t=>landmarkDist(palm, t));
+      // 经验：越大越张开
+      const avg = ds.reduce((s,v)=>s+v,0)/ds.length;
+      return avg; // ~0.35..0.9
+    }
+
+    function getPinch(lm){
+      const thumb = lm[4];
+      const index = lm[8];
+      return landmarkDist(thumb, index);
+    }
+
+    function focusCardByCursor() {
+      // cursor -> NDC
+      pointerNDC.x = (cursorX / innerWidth) * 2 - 1;
+      pointerNDC.y = -(cursorY / innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointerNDC, camera);
+      const hits = raycaster.intersectObjects(cards, true);
+      if (hits && hits.length) {
+        let obj = hits[0].object;
+        // 如果点到 frame 子物体，向上找到 card
+        while (obj && !cards.includes(obj) && obj.parent) obj = obj.parent;
+        if (obj && cards.includes(obj)) return obj;
+      }
+      return null;
+    }
+
+    function enterFocus(card) {
+      focused = card;
+      setMode("FOCUS");
+      // 让这个卡片移动到镜头前
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const target = new THREE.Vector3().copy(camera.position).add(forward.multiplyScalar(3.2));
+      card.userData.targetPos.copy(target);
+      // 朝向镜头
+      const look = new THREE.Matrix4().lookAt(target, camera.position, new THREE.Vector3(0,1,0));
+      card.userData.targetQuat.setFromRotationMatrix(look);
+      card.userData.targetScale = PARAM.focusScale;
+    }
+
+    function exitFocus() {
+      if (!focused) return;
+      // 恢复布局
+      focused.userData.targetPos.copy(focused.userData.basePos);
+      focused.userData.targetQuat.copy(focused.userData.baseQuat);
+      focused.userData.targetScale = 1;
+      focused = null;
+      setMode("WALL");
+    }
+
+    // ========= MediaPipe Hands =========
+    let hands = null;
+    let mpCamera = null;
+    let lastHandSeen = 0;
+
+    function initHands() {
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.65,
+        minTrackingConfidence: 0.60,
+      });
+      hands.onResults(onResults);
+    }
+
+    function onResults(results) {
+      const now = performance.now();
+      const lm = results.multiHandLandmarks && results.multiHandLandmarks[0];
+      if (!lm) {
+        if (now - lastHandSeen > 600) hideCursor();
+        return;
+      }
+      lastHandSeen = now;
+
+      // 以食指指尖做光标
+      const idxTip = lm[8];
+      setCursor(idxTip.x, idxTip.y);
+
+      // 手势判定
+      const open = openness(lm);
+      const pinch = getPinch(lm);
+
+      // 模式切换：张开->照片墙 / 握拳->树
+      if (open > PARAM.openPalmThresh) {
+        if (mode !== "FOCUS") setMode("WALL");
+      } else if (open < PARAM.fistThresh) {
+        if (mode !== "FOCUS") setMode("TREE");
+      }
+
+      // 捏合选中：仅在 WALL/FOCUS 生效
+      if (mode === "WALL" || mode === "FOCUS") {
+        if (pinch < PARAM.pinchThresh) {
+          if (mode !== "FOCUS") {
+            const c = focusCardByCursor();
+            if (c) enterFocus(c);
+          }
+        } else {
+          if (mode === "FOCUS") {
+            exitFocus();
+          }
         }
       }
-    } else {
-      cursorDot.style.display = "none";
-      if (isPinching && mode === "FOCUS") exitFocus();
-      isPinching = false;
-    }
-  }
-
-  function lerpCardsAndCamera() {
-    for (const card of photoCards) {
-      const isFocus = (card === focused);
-
-      card.position.lerp(card.userData.targetPos, PARAM.smooth);
-      card.quaternion.slerp(card.userData.targetQuat, PARAM.smooth);
-
-      const targetS = isFocus ? (card.userData.targetScale * PARAM.focusScale) : card.userData.targetScale;
-      const s = card.scale.x + (targetS - card.scale.x) * (isFocus ? PARAM.focusSmooth : PARAM.smooth);
-      card.scale.setScalar(s);
-
-      if (isFocus) card.lookAt(camera.position);
     }
 
-    camera.position.lerp(camTargetPos, (mode === "FOCUS") ? PARAM.focusSmooth : PARAM.smooth);
-    camera.lookAt(camTargetLook);
-  }
+    // ========= 摄像头：iOS/Safari 必须“同步 onclick 第一层触发” =========
+    let stream = null;
 
-  function tick() {
-    requestAnimationFrame(tick);
-    updateFromHands();
-    lerpCardsAndCamera();
-    scene.rotation.y += 0.00085;
-    composer.render();
-  }
-  tick();
+    function stopStream() {
+      if (!stream) return;
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
 
-  addEventListener("resize", () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.6 : 2));
-    renderer.setSize(innerWidth, innerHeight);
-    composer.setSize(innerWidth, innerHeight);
-  });
+    function requestCamera(facingMode) {
+      // 关键：不要 async/await，不要包太深层
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facingMode },
+        audio: false
+      }).then(s => {
+        stream = s;
+        videoEl.srcObject = stream;
 
-</script>
+        // iOS 需要 playsinline + 用户手势后 play
+        videoEl.play().then(() => {
+          panelEl.style.display = "none";
+          setMode("WALL");
+
+          if (!hands) initHands();
+
+          // 用 camera_utils 驱动 mediapipe
+          if (mpCamera) {
+            mpCamera.stop();
+            mpCamera = null;
+          }
+          mpCamera = new Camera(videoEl, {
+            onFrame: async () => {
+              if (!hands) return;
+              await hands.send({ image: videoEl });
+            },
+            width: 640,
+            height: 480
+          });
+          mpCamera.start();
+
+          statusEl.textContent = "摄像头已启动，识别中…（张开=照片墙，握拳=圣诞树，捏合=放大）";
+        }).catch(err => {
+          alert("视频无法播放：请确认已允许摄像头，并使用 Safari 打开。");
+          console.error(err);
+        });
+      }).catch(err => {
+        alert("摄像头权限未成功触发：请在 iPhone 设置→Safari→摄像头 里允许，并用无痕模式重试。");
+        console.error(err);
+      });
+    }
+
+    // ✅ iOS 关键：onclick 必须同步触发 requestCamera
+    btnStart.onclick = () => requestCamera({ ideal: "environment" });
+    btnStartFront.onclick = () => requestCamera("user");
+
+    // 视频预览开关
+    toggleVideoEl.onclick = () => {
+      videoEl.style.display = (videoEl.style.display === "none" ? "block" : "none");
+    };
+
+    // ========= 动画与插值 =========
+    function lerpScene() {
+      // 照片墙缓慢旋转
+      if (mode === "WALL") {
+        scene.rotation.y += PARAM.idleRotate;
+      } else if (mode === "TREE") {
+        treeGroup.rotation.y += 0.012;
+      }
+
+      // 卡片插值
+      for (const card of cards) {
+        const isFocus = (card === focused);
+        const smooth = isFocus ? PARAM.focusSmooth : 0.10;
+        card.position.lerp(card.userData.targetPos, smooth);
+        card.quaternion.slerp(card.userData.targetQuat, smooth);
+        const tScale = isFocus ? card.userData.targetScale : 1;
+        const s = card.scale.x + (tScale - card.scale.x) * smooth;
+        card.scale.setScalar(s);
+      }
+    }
+
+    function tick() {
+      requestAnimationFrame(tick);
+      lerpScene();
+      renderer.render(scene, camera);
+    }
+    tick();
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    // 初始状态
+    setMode("INIT");
+  </script>
 </body>
 </html>
